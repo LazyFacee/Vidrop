@@ -1,0 +1,30 @@
+VIDROP v2.0.0 - CARA MENDAPATKAN APLIKASI (tanpa install Python)
+HOW TO GET THE APP (no Python needed)
+=================================================================
+Windows hanya bisa membuat .exe di Windows, dan macOS hanya bisa membuat .app di Mac.
+Jadi kita pinjam komputer gratis dari GitHub (GitHub Actions) untuk membuatnya.
+
+SETUP / UPDATE
+1. Buka repo GitHub kamu. Klik "Add file" > "Upload files".
+2. Ekstrak Vidrop.zip. Buka foldernya, tekan Ctrl+A / Cmd+A, seret SEMUA isinya ke GitHub
+   (seret isinya, bukan foldernya). File bernama sama otomatis diganti.
+   File baru di versi ini: i18n.py (dan assets/ berisi logo baru).
+3. Folder ".github" kadang tidak ikut terseret. Kalau begitu: buka .github/workflows/build.yml,
+   klik ikon pensil, Ctrl+A, tempel isi build.yml yang baru, lalu "Commit changes".
+4. Klik "Commit changes". Buka tab "Actions" dan tunggu sekitar 5-10 menit sampai hijau.
+
+HASIL (tab Code > Releases di sisi kanan > Vidrop v2.0.0)
+- Vidrop-Setup-v2.0.0.exe          Windows, installer (disarankan; update tinggal jalankan lagi)
+- Vidrop-Portable-v2.0.0.exe       Windows, tanpa instalasi
+- Vidrop-v2.0.0-macOS-arm64.dmg    Mac Apple Silicon (M1/M2/M3/M4)
+- Vidrop-v2.0.0-macOS-x64.dmg      Mac Intel
+
+NAIK VERSI: ubah isi file VERSION dulu (misal 2.0.1), baru ubah file lain.
+
+WINDOWS: kalau muncul "Windows protected your PC", klik "More info" > "Run anyway".
+MAC: buka .dmg, seret Vidrop ke Applications. Pertama kali: klik kanan Vidrop > Open > Open.
+     Kalau tetap diblokir: System Settings > Privacy & Security > "Open Anyway", atau di Terminal:
+     xattr -dr com.apple.quarantine /Applications/Vidrop.app
+
+BAHASA / LANGUAGE: otomatis mengikuti bahasa sistem. Ganti lewat ikon ID/EN di sidebar
+atau lewat Opsi/Settings. Follows your system language; switch via the ID/EN button or Settings.

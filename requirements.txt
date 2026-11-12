@@ -1,0 +1,3 @@
+yt-dlp[default]
+Pillow
+imageio-ffmpeg
