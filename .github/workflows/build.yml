@@ -1,0 +1,156 @@
+name: Build Vidrop
+
+on:
+  workflow_dispatch:        # tombol "Run workflow" manual
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: "0 3 * * 1"     # tiap Senin, otomatis ambil yt-dlp terbaru
+
+permissions:
+  contents: write
+
+# Kalau ada beberapa commit beruntun, hanya build terakhir yang dilanjutkan
+concurrency:
+  group: build-vidrop
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------ Windows
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Baca versi dari file VERSION
+        id: ver
+        shell: bash
+        run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build Vidrop.exe
+        run: >
+          python -m PyInstaller --noconfirm --onefile --windowed --name Vidrop
+          --icon assets/vidrop.ico --add-data "assets;assets"
+          --collect-all imageio_ffmpeg --collect-all yt_dlp --collect-all yt_dlp_ejs
+          vidrop.py
+
+      - name: Pasang Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Unduh terjemahan Indonesia untuk installer (opsional)
+        shell: bash
+        continue-on-error: true
+        run: curl -fsSL -o Indonesian.isl https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/Indonesian.isl
+
+      - name: Buat installer
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc "/DMyAppVersion=$env:VERSION" installer.iss
+          if ($LASTEXITCODE -ne 0 -and (Test-Path Indonesian.isl)) {
+            Write-Host "Terjemahan bermasalah, mengulang tanpa bahasa Indonesia"
+            Remove-Item Indonesian.isl
+            & $iscc "/DMyAppVersion=$env:VERSION" installer.iss
+          }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Beri nama file portable sesuai versi
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: mv dist/Vidrop.exe "dist/Vidrop-Portable-v${VERSION}.exe"
+
+      - name: Simpan sebagai artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vidrop-Windows-v${{ steps.ver.outputs.version }}
+          path: |
+            installer/Vidrop-Setup-v${{ steps.ver.outputs.version }}.exe
+            dist/Vidrop-Portable-v${{ steps.ver.outputs.version }}.exe
+
+      - name: Publikasikan ke Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Vidrop v${{ steps.ver.outputs.version }}
+          body: |
+            **Windows:** unduh `Vidrop-Setup-v${{ steps.ver.outputs.version }}.exe` (installer, disarankan).
+            Untuk update, cukup jalankan installer versi baru. Tidak perlu uninstall dulu.
+            `Vidrop-Portable-v${{ steps.ver.outputs.version }}.exe` = versi tanpa instalasi.
+
+            **macOS:** unduh file `.dmg` sesuai Mac kamu (`arm64` = Apple Silicon M1/M2/M3/M4, `x64` = Intel).
+            Pertama kali dibuka: klik kanan Vidrop.app lalu pilih Open.
+          files: |
+            installer/Vidrop-Setup-v${{ steps.ver.outputs.version }}.exe
+            dist/Vidrop-Portable-v${{ steps.ver.outputs.version }}.exe
+          make_latest: true
+
+  # ------------------------------------------------------------ macOS
+  build-macos:
+    needs: build-windows
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest        # Apple Silicon (M1/M2/M3/M4)
+            arch: arm64
+          - os: macos-15-intel      # Mac Intel
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Baca versi dari file VERSION
+        id: ver
+        run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build Vidrop.app
+        run: >
+          python -m PyInstaller --noconfirm --windowed --name Vidrop
+          --icon assets/vidrop.icns --osx-bundle-identifier app.vidrop
+          --add-data "assets:assets"
+          --collect-all imageio_ffmpeg --collect-all yt_dlp --collect-all yt_dlp_ejs
+          vidrop.py
+
+      - name: Tanda tangan ad-hoc dan buat DMG
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          codesign --force --deep --sign - dist/Vidrop.app
+          mkdir dmg
+          cp -R dist/Vidrop.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "Vidrop" -srcfolder dmg -ov -format UDZO "Vidrop-v${VERSION}-macOS-${ARCH}.dmg"
+
+      - name: Simpan sebagai artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vidrop-macOS-${{ matrix.arch }}-v${{ steps.ver.outputs.version }}
+          path: Vidrop-v${{ steps.ver.outputs.version }}-macOS-${{ matrix.arch }}.dmg
+
+      - name: Tambahkan ke Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          gh release view "v${VERSION}" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+            gh release create "v${VERSION}" --repo "${{ github.repository }}" --title "Vidrop v${VERSION}" --notes "Vidrop v${VERSION}" || true
+          gh release upload "v${VERSION}" "Vidrop-v${VERSION}-macOS-${ARCH}.dmg" --repo "${{ github.repository }}" --clobber
